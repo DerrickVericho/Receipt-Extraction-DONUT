@@ -25,17 +25,17 @@ logger.info(f"Using compute device: {DEVICE}")
 MODELS_CONFIG = {
     "model_1": {
         "id": "model_1",
-        "name": "Donut Fine Tuned CORDv2 Base",
+        "name": settings.DATABRICKS_MODEL_NAME_1,
         "run_id": settings.DATABRICKS_RUN_ID_1
     },
     "model_2": {
         "id": "model_2",
-        "name": "Donut Fine Tuned CORDv2 30% Pruning (Second Best)",
+        "name": settings.DATABRICKS_MODEL_NAME_2,
         "run_id": settings.DATABRICKS_RUN_ID_2
     },
     "model_3": {
         "id": "model_3",
-        "name": "Donut Fine Tuned CORDv2 70% Pruning (Worst)",
+        "name": settings.DATABRICKS_MODEL_NAME_3,
         "run_id": settings.DATABRICKS_RUN_ID_3
     },
 }
