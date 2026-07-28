@@ -7,6 +7,7 @@ load_dotenv()
 
 API_BASE_URL = os.environ.get("API_BASE_URL")
 
+
 def fetch_models():
     try:
         response = requests.get(f"{API_BASE_URL}/models")
@@ -17,6 +18,7 @@ def fetch_models():
     except Exception as e:
         pass
     return None
+
 
 def extract_receipt(uploaded_file, selected_model):
     files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}

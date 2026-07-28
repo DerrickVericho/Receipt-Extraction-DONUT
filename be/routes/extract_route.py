@@ -4,12 +4,14 @@ from schema.schemas import BaseResponse
 
 router = APIRouter()
 
+
 @router.get("/models", response_model=BaseResponse)
 def get_models():
     """
     Get models for the model selection in streamlit
     """
     return get_models_flow()
+
 
 @router.post("/extract", response_model=BaseResponse)
 def extract_information(model_name: str = Form(...), file: UploadFile = File(...)):

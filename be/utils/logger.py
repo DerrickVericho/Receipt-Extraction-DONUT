@@ -8,14 +8,13 @@ log_file_path = os.path.join(os.path.dirname(__file__), "..", "app.log")
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler(log_file_path),
-        logging.StreamHandler()
-    ]
+    handlers=[logging.FileHandler(log_file_path), logging.StreamHandler()],
 )
+
 
 def get_logger(name: str):
     return logging.getLogger(name)
+
 
 def _save_uploaded_file(request_dir: str, file: UploadFile) -> tuple[bytes, str]:
     """
@@ -28,8 +27,9 @@ def _save_uploaded_file(request_dir: str, file: UploadFile) -> tuple[bytes, str]
     image_path = os.path.join(request_dir, original_filename)
     with open(image_path, "wb") as f:
         f.write(file_bytes)
-        
+
     return file_bytes, original_filename
+
 
 def _save_log(request_dir: str, log_data: dict):
     """

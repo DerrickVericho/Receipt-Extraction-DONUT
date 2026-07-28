@@ -7,6 +7,7 @@ import uvicorn
 
 logger = get_logger(__name__)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("FastAPI application startup: initializing models")
@@ -15,6 +16,7 @@ async def lifespan(app: FastAPI):
     logger.info("FastAPI application shutdown: clearing models")
     clear_ml_components()
 
+
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Databricks OCR API", lifespan=lifespan)
@@ -22,13 +24,16 @@ app = FastAPI(title="Databricks OCR API", lifespan=lifespan)
 # Add CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins, modify this in production to specific frontend URLs
+    allow_origins=[
+        "*"
+    ],  # Allows all origins, modify this in production to specific frontend URLs
     allow_credentials=True,
     allow_methods=["*"],  # Allows all methods (GET, POST, etc.)
     allow_headers=["*"],  # Allows all headers
 )
 
 app.include_router(extract_router, prefix="/api", tags=["Extraction"])
+
 
 @app.get("/")
 def root():

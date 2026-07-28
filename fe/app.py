@@ -7,7 +7,8 @@ st.set_page_config(layout="wide", page_title="Donut KIE \u2014 Receipt Extractio
 
 
 # CSS style for the app
-st.markdown("""
+st.markdown(
+    """
 <style>
 
     .block-container {
@@ -52,7 +53,9 @@ st.markdown("""
     }
 
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
 # header
@@ -75,7 +78,10 @@ with col_left:
 
     # upload image
     with st.container(border=True):
-        st.markdown('<div class="section-label">1 \u2014 Upload Image</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="section-label">1 \u2014 Upload Image</div>',
+            unsafe_allow_html=True,
+        )
         uploaded_file = st.file_uploader(
             "Drop receipt image here (.jpg / .png / .webp)",
             type=["jpg", "png", "webp"],
@@ -86,7 +92,10 @@ with col_left:
 
     # select model
     with st.container(border=True):
-        st.markdown('<div class="section-label">2 \u2014 Select Model</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="section-label">2 \u2014 Select Model</div>',
+            unsafe_allow_html=True,
+        )
 
         # model fetching
         model_options = fetch_models()
@@ -102,7 +111,9 @@ with col_left:
         )
 
         st.write("")
-        run_inference = st.button("Run Inference", type="primary", use_container_width=True)
+        run_inference = st.button(
+            "Run Inference", type="primary", use_container_width=True
+        )
 
 
 # right side (inference metrics and result)
@@ -110,7 +121,9 @@ with col_right:
 
     # image preview
     with st.container(border=True):
-        st.markdown('<div class="section-label">Image Preview</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="section-label">Image Preview</div>', unsafe_allow_html=True
+        )
         if uploaded_file is not None:
             st.image(uploaded_file, use_container_width=True)
         else:
@@ -120,14 +133,18 @@ with col_right:
 
     # inference metrics
     with st.container(border=True):
-        st.markdown('<div class="section-label">Inference Metrics</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="section-label">Inference Metrics</div>', unsafe_allow_html=True
+        )
         metric_col1, metric_col2 = st.columns(2)
 
     st.write("")
 
     # extracted fields
     with st.container(border=True):
-        st.markdown('<div class="section-label">Extracted Fields</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="section-label">Extracted Fields</div>', unsafe_allow_html=True
+        )
         extracted_fields_placeholder = st.empty()
 
     # inference logic
@@ -137,36 +154,47 @@ with col_right:
         if uploaded_file is not None:
             with st.spinner("Running inference..."):
                 start_time = time.time()
-                
+
                 # extract receipt
                 try:
                     response = extract_receipt(uploaded_file, selected_model)
                     latency = time.time() - start_time
-                    
+
                     # metrics
                     with metric_col1:
                         st.metric(label="Latency", value=f"{latency:.2f}s")
                     with metric_col2:
-                        st.metric(label="Status", value="Success" if response.status_code == 200 else "Failed")
-                    
+                        st.metric(
+                            label="Status",
+                            value=(
+                                "Success" if response.status_code == 200 else "Failed"
+                            ),
+                        )
+
                     # display extracted fields
                     if response.status_code == 200:
                         res_json = response.json()
                         if res_json.get("success"):
                             extracted_fields_placeholder.json(res_json.get("data", {}))
                         else:
-                            extracted_fields_placeholder.error(f"Inference failed: {res_json.get('msg')}")
+                            extracted_fields_placeholder.error(
+                                f"Inference failed: {res_json.get('msg')}"
+                            )
                     else:
-                        extracted_fields_placeholder.error(f"Backend returned status code {response.status_code}")
-                
+                        extracted_fields_placeholder.error(
+                            f"Backend returned status code {response.status_code}"
+                        )
+
                 # if extract receipt error
                 except Exception as e:
                     with metric_col1:
                         st.metric(label="Latency", value="\u2013 ms")
                     with metric_col2:
                         st.metric(label="Status", value="Error")
-                    extracted_fields_placeholder.error(f"Error connecting to backend: {e}")
-        
+                    extracted_fields_placeholder.error(
+                        f"Error connecting to backend: {e}"
+                    )
+
         # if user hasnt uploaded an image
         else:
             with metric_col1:
@@ -174,7 +202,7 @@ with col_right:
             with metric_col2:
                 st.metric(label="Model size", value="\u2013 MB")
             extracted_fields_placeholder.warning("Please upload an image first.")
-    
+
     # if user has not run inference
     else:
         with metric_col1:
