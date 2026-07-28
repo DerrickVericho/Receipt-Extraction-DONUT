@@ -1,15 +1,10 @@
 import uuid
-import os
-import json
 from fastapi import UploadFile
 from service.databricks_service import get_available_models, run_extraction
 from utils.helpers import format_response
-from utils.logger import get_logger, _save_uploaded_file, _save_log
+from utils.logger import get_logger, new_request_dir, _save_uploaded_file, _save_log
 
 logger = get_logger(__name__)
-
-REQUEST_LOGS_DIR = os.path.join(os.path.dirname(__file__), "..", "logs", "requests")
-os.makedirs(REQUEST_LOGS_DIR, exist_ok=True)
 
 
 def get_models_flow():
@@ -35,8 +30,7 @@ def extract_flow(model_name: str, file: UploadFile):
     logger.info(
         f"Starting extract flow for model: {model_name}, request_id: {request_id}"
     )
-    request_dir = os.path.join(REQUEST_LOGS_DIR, request_id)
-    os.makedirs(request_dir, exist_ok=True)
+    request_dir = new_request_dir(request_id)
 
     try:
         # save uploaded file
