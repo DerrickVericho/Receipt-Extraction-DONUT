@@ -1,0 +1,20 @@
+[project]
+name = "thesis-donut"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.140.9",
+    "mlflow-skinny>=3.14.0",
+    "pillow>=12.3.0",
+    "pydantic-settings>=2.14.2",
+    "python-dotenv>=1.2.2",
+    "python-multipart>=0.0.32",
+    "requests>=2.34.2",
+    "streamlit>=1.60.0",
+    "torch>=2.13.0",
+    "torchvision>=0.28.0",
+    "transformers>=5.14.1",
+    "uvicorn>=0.51.0",
+]

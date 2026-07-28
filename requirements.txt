@@ -1,0 +1,18 @@
+# uv pip install -r requirements.txt
+--extra-index-url https://download.pytorch.org/whl/cu126
+
+# --- backend (be/) ---
+fastapi
+uvicorn
+python-multipart      # UploadFile / Form
+pydantic-settings     # config/settings.py
+mlflow-skinny         # MlflowClient.download_artifacts; pulls databricks-sdk
+torch
+torchvision           # transformers v5 fast image processors
+transformers
+pillow
+
+# --- frontend (fe/) ---
+streamlit
+requests
+python-dotenv
