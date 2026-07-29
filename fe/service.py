@@ -1,11 +1,12 @@
-import requests
 import os
 
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
 API_BASE_URL = os.environ.get("API_BASE_URL")
+print(API_BASE_URL)
 
 
 def fetch_models():
@@ -20,7 +21,7 @@ def fetch_models():
     return None
 
 
-def extract_receipt(uploaded_file, selected_model):
-    files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
+def extract_receipt(uploaded_file, selected_model, file_bytes):
+    files = {"file": (uploaded_file.name, file_bytes, uploaded_file.type)}
     data = {"model_name": selected_model}
     return requests.post(f"{API_BASE_URL}/extract", files=files, data=data)

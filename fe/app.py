@@ -1,5 +1,9 @@
-import streamlit as st
+import io
 import time
+
+import streamlit as st
+from PIL import Image
+from streamlit_cropper import st_cropper
 
 from service import fetch_models, extract_receipt
 
@@ -119,13 +123,24 @@ with col_left:
 # right side (inference metrics and result)
 with col_right:
 
-    # image preview
+    # image preview + interactive crop
     with st.container(border=True):
         st.markdown(
             '<div class="section-label">Image Preview</div>', unsafe_allow_html=True
         )
+
+        cropped_img = None
         if uploaded_file is not None:
-            st.image(uploaded_file, use_container_width=True)
+            img = Image.open(io.BytesIO(uploaded_file.getvalue()))
+
+            enable_crop = st.checkbox("Crop image (optional)", key="enable_crop")
+            if enable_crop:
+                cropped_img = st_cropper(
+                    img, realtime_update=True, box_color="#FF4B4B", aspect_ratio=None
+                )
+                st.image(cropped_img, caption="Cropped preview", width=300)
+            else:
+                st.image(uploaded_file, use_container_width=True)
         else:
             st.info("No image uploaded yet")
 
@@ -155,9 +170,19 @@ with col_right:
             with st.spinner("Running inference..."):
                 start_time = time.time()
 
+                # prepare bytes (cropped or original)
+                if cropped_img is not None:
+                    buf = io.BytesIO()
+                    cropped_img.save(buf, format="PNG")
+                    file_bytes = buf.getvalue()
+                else:
+                    file_bytes = uploaded_file.getvalue()
+
                 # extract receipt
                 try:
-                    response = extract_receipt(uploaded_file, selected_model)
+                    response = extract_receipt(
+                        uploaded_file, selected_model, file_bytes
+                    )
                     latency = time.time() - start_time
 
                     # metrics

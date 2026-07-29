@@ -1,5 +1,6 @@
 import os
 import io
+import json
 import re
 
 import mlflow
@@ -18,27 +19,12 @@ ARTIFACT_PATH = "model"
 LOCAL_DOWNLOAD_DIR = "./model_cache"
 
 # determine device
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-logger.info(f"Using compute device: {DEVICE}")
-
-# models available (currently static, bisa diupdate nanti)
-MODELS_CONFIG = {
-    "model_1": {
-        "id": "model_1",
-        "name": settings.DATABRICKS_MODEL_NAME_1,
-        "run_id": settings.DATABRICKS_RUN_ID_1,
-    },
-    "model_2": {
-        "id": "model_2",
-        "name": settings.DATABRICKS_MODEL_NAME_2,
-        "run_id": settings.DATABRICKS_RUN_ID_2,
-    },
-    "model_3": {
-        "id": "model_3",
-        "name": settings.DATABRICKS_MODEL_NAME_3,
-        "run_id": settings.DATABRICKS_RUN_ID_3,
-    },
-}
+if settings.DATABRICKS_DEVICE and settings.DATABRICKS_DEVICE != "auto":
+    DEVICE = torch.device(settings.DATABRICKS_DEVICE)
+    logger.info(f"Using compute device: {DEVICE} (from DATABRICKS_DEVICE)")
+else:
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logger.info(f"Using compute device: {DEVICE} (auto-detected)")
 
 # global variable agar tidak di load berulang ulang
 ml_components = {}
@@ -59,45 +45,68 @@ def load_ml_components():
     logger.info("Downloading artifacts from Databricks...")
 
     # download and load models from Databricks
-    for model_key, config in MODELS_CONFIG.items():
+    for run_id in settings.DATABRICKS_RUN_IDS:
 
-        # getting the run id since in the mlflow, modelnya ada di run dan tidak di regist ke models
-        run_id = config["run_id"]
+        run_id = run_id.strip()
         if not run_id:
-            logger.info(f"Skipping {model_key} as no RUN_ID is provided.")
             continue
-        logger.info(f"Loading {model_key} with run_id {run_id}...")
+        logger.info(f"Loading model with run_id {run_id}...")
 
-        # determine paths (using the path from databricks)
-        model_download_dir = os.path.join(LOCAL_DOWNLOAD_DIR, model_key)
+        # determine paths, using run_id as cache folder name
+        model_download_dir = os.path.join(LOCAL_DOWNLOAD_DIR, run_id)
         expected_local_artifact_path = os.path.join(model_download_dir, ARTIFACT_PATH)
-        model_dir = os.path.join(expected_local_artifact_path, "huggingface_model")
+        metadata_path = os.path.join(expected_local_artifact_path, "metadata.json")
         processor_dir = os.path.join(expected_local_artifact_path, "processor")
+        model_dir = os.path.join(expected_local_artifact_path, "huggingface_model")
 
-        # check if they already exist locally
-        if os.path.exists(model_dir) and os.path.exists(processor_dir):
-            logger.info(f"Model {model_key} already exists locally. Skipping download.")
-
-        # else download the model
-        else:
-            logger.info(f"Downloading {model_key} from Databricks...")
-            local_artifact_path = client.download_artifacts(
+        # download if not already cached (metadata.json present for both quantized and non-quantized)
+        if not os.path.exists(metadata_path):
+            logger.info(f"Downloading run_id {run_id} from Databricks...")
+            client.download_artifacts(
                 run_id=run_id, path=ARTIFACT_PATH, dst_path=model_download_dir
             )
-            model_dir = os.path.join(local_artifact_path, "huggingface_model")
-            processor_dir = os.path.join(local_artifact_path, "processor")
+        else:
+            logger.info(f"run_id {run_id} already exists locally. Skipping download.")
 
-        # load model to local directory
-        logger.info(
-            f"Loading {model_key} Hugging Face model into memory on {DEVICE}..."
-        )
-        model = VisionEncoderDecoderModel.from_pretrained(model_dir)
-        model.to(DEVICE)
+        # determine model type and name from metadata.json
+        model_name = run_id
+        is_quantized = False
+        if os.path.exists(metadata_path):
+            try:
+                with open(metadata_path, "r") as f:
+                    metadata = json.load(f)
+                is_quantized = metadata.get("is_quantized", False)
+                model_name = metadata.get("model_name", run_id)
+            except Exception:
+                pass
+
+        # load processor (same for both types)
+        processor = AutoProcessor.from_pretrained(processor_dir)
+
+        # load model based on quantization type
+        if is_quantized:
+            logger.info(f"Loading run_id {run_id} as quantized model on CPU...")
+            pt_files = [f for f in os.listdir(expected_local_artifact_path) if f.endswith(".pt")]
+            if not pt_files:
+                raise FileNotFoundError(f"No .pt file found for quantized model {run_id}")
+            model_path = os.path.join(expected_local_artifact_path, pt_files[0])
+            model = torch.load(model_path, map_location=torch.device("cpu"), weights_only=False)
+            model.config.pad_token_id = processor.tokenizer.pad_token_id
+            model.config.eos_token_id = processor.tokenizer.eos_token_id
+            model.config.decoder_start_token_id = processor.tokenizer.convert_tokens_to_ids("<s_cord-v2>")
+            model.config.vocab_size = model.config.decoder.vocab_size
+            model.eval()
+        else:
+            logger.info(f"Loading run_id {run_id} Hugging Face model into memory on {DEVICE}...")
+            model = VisionEncoderDecoderModel.from_pretrained(model_dir)
+            model.to(DEVICE)
 
         # set global variable
-        ml_components[model_key] = {
+        ml_components[run_id] = {
             "model": model,
-            "processor": AutoProcessor.from_pretrained(processor_dir),
+            "processor": processor,
+            "is_quantized": is_quantized,
+            "name": model_name,
         }
 
     logger.info("All configured models loaded successfully. Server ready.")
@@ -115,15 +124,17 @@ def clear_ml_components():
 
 def get_available_models():
     """
-    get list of available models (static for now, defined in MODELS_CONFIG)
+    get list of available models from currently loaded ml_components
     """
 
     # returning the models list
     logger.info("Fetching available models from Databricks")
     available_models = []
-    for model_key, config in MODELS_CONFIG.items():
-        if model_key in ml_components:
-            available_models.append({"id": config["id"], "description": config["name"]})
+    for run_id, components in ml_components.items():
+        available_models.append({
+            "id": run_id,
+            "description": components.get("name", run_id),
+        })
 
     return available_models
 
@@ -143,16 +154,19 @@ def run_extraction(model_name: str, file_bytes: bytes):
     processor = components["processor"]
     model = components["model"]
 
+    # quantized models must stay on CPU
+    device = torch.device("cpu") if components.get("is_quantized") else DEVICE
+
     # prepare image for the model and move to correct device
     image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
-    pixel_values = processor(image, return_tensors="pt").pixel_values.to(DEVICE)
+    pixel_values = processor(image, return_tensors="pt").pixel_values.to(device)
 
     # donut requires a task prompt for generation
     task_prompt = "<s_cord-v2>"
     decoder_input_ids = processor.tokenizer(
         task_prompt, add_special_tokens=False, return_tensors="pt"
     ).input_ids
-    decoder_input_ids = decoder_input_ids.to(DEVICE)
+    decoder_input_ids = decoder_input_ids.to(device)
 
     # generate output
     outputs = model.generate(
