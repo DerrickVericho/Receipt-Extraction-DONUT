@@ -7,6 +7,7 @@ class Settings(BaseSettings):
 
     DATABRICKS_RUN_IDS: list[str] = []
     DATABRICKS_DEVICE: str = "auto"
+    EXPERIMENT_RESULTS_PATH: str = "../hasil_eksperimen_donut_optimasi.json"
 
     class Config:
         env_file = ".env"

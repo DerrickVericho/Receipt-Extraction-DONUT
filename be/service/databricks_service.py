@@ -29,6 +29,8 @@ else:
 # global variable agar tidak di load berulang ulang
 ml_components = {}
 
+_experiment_index: dict[str, dict] = {}
+
 
 def load_ml_components():
     """
@@ -122,19 +124,128 @@ def clear_ml_components():
     logger.info("ML components cleared.")
 
 
+def _load_experiment_results():
+    """
+    Load experiment results JSON, index by MLflow Run ID.
+    Called once at startup after models are loaded.
+    """
+    global _experiment_index
+
+    path = os.path.join(
+        os.path.dirname(__file__), "..", settings.EXPERIMENT_RESULTS_PATH
+    )
+    path = os.path.normpath(path)
+
+    if not os.path.exists(path):
+        logger.warning(f"Experiment results file not found at {path}. Metrics unavailable.")
+        return
+
+    with open(path, "r") as f:
+        data = json.load(f)
+
+    for row in data:
+        run_id = row.get("MLflow Run ID")
+        if run_id:
+            _experiment_index[run_id] = row
+
+    logger.info(
+        f"Loaded experiment results for {len(_experiment_index)} models."
+    )
+
+
+def _compute_badges(row, model_name, is_quantized):
+    """Compute display badges from experiment metrics."""
+    badges = []
+    f1 = row.get("F1-Score") or 0
+    f1_drop = row.get("F1 Drop") or 0
+
+    if model_name == "DONUT-Base":
+        badges.append("Highest accuracy")
+    elif f1 < 0.2:
+        badges.append("Experimental · Low accuracy")
+    elif is_quantized:
+        badges.append("Quantized · CPU only")
+    elif f1 >= 0.78 and f1_drop <= 0.02:
+        badges.append("Recommended")
+    else:
+        badges.append("Compact")
+
+    if "KD" in model_name:
+        badges.append("Knowledge distilled")
+
+    return badges
+
+
 def get_available_models():
     """
-    get list of available models from currently loaded ml_components
+    Get list of available models enriched with experiment metrics.
     """
 
-    # returning the models list
     logger.info("Fetching available models from Databricks")
     available_models = []
+
     for run_id, components in ml_components.items():
+        row = _experiment_index.get(run_id, {})
+        model_name = components.get("name", run_id)
+        is_quantized = components.get("is_quantized", False)
+
+        f1 = row.get("F1-Score") or 0
+        f1_drop = row.get("F1 Drop") or 0
+        size_red = row.get("Size Reduction (%)") or 0
+
+        badges = _compute_badges(row, model_name, is_quantized)
+
+        # category and summary
+        if model_name == "DONUT-Base":
+            category = "base"
+            summary = f"Highest extraction quality. F1: {f1:.4f}"
+        elif f1 < 0.2:
+            category = "experimental"
+            summary = f"Experimental. F1 score of {f1:.4f} — use with caution."
+        elif is_quantized:
+            category = "compact"
+            summary = "Smaller quantized model. Uses less storage but runs on CPU only."
+        elif f1_drop <= 0.02:
+            category = "balanced"
+            summary = f"Near-base accuracy with {size_red:.1f}% smaller model. F1: {f1:.4f}"
+        elif f1 >= 0.7:
+            category = "compact"
+            summary = f"F1: {f1:.4f}, {size_red:.1f}% smaller."
+        else:
+            category = "compact"
+            summary = f"Reduced quality. F1: {f1:.4f}"
+
         available_models.append({
             "id": run_id,
-            "description": components.get("name", run_id),
+            "name": model_name,
+            "is_quantized": is_quantized,
+            "recommended": "Recommended" in badges,
+            "category": category,
+            "summary": summary,
+            "badges": badges,
+            "metrics": {
+                "precision": row.get("Precision"),
+                "recall": row.get("Recall"),
+                "f1_score": row.get("F1-Score"),
+                "n_ted": row.get("N-TED"),
+                "size_mb": row.get("Size (MB)"),
+                "latency_ms": row.get("Latency (ms/sample)"),
+                "flops_gflops": row.get("FLOPs (GFLOPs)"),
+            } if row else {},
+            "comparison_to_base": {
+                "size_reduction_percent": row.get("Size Reduction (%)"),
+                "latency_reduction_percent": row.get("Latency Reduction (%)"),
+                "f1_drop": row.get("F1 Drop"),
+            } if row else {},
         })
+
+    # sort: recommended first, then base, then by F1 descending
+    available_models.sort(
+        key=lambda m: (
+            not m["recommended"] and m["category"] != "base",
+            -(m["metrics"].get("f1_score") or 0),
+        )
+    )
 
     return available_models
 
