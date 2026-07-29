@@ -1,29 +1,27 @@
 import uuid
-from fastapi import UploadFile
+from fastapi import UploadFile, HTTPException
 from service.databricks_service import get_available_models, run_extraction
-from utils.helpers import format_response
+from schema.schemas import BaseResponse
 from utils.logger import get_logger, new_request_dir, _save_uploaded_file, _save_log
 
 logger = get_logger(__name__)
 
 
-def get_models_flow():
+def get_models_flow() -> BaseResponse:
     logger.info("Starting get_models flow")
 
     try:
         models = get_available_models()
-        return format_response(
+        return BaseResponse(
             success=True, msg="Successfully retrieved models", data=models
         )
 
     except Exception as e:
         logger.error(f"Error in get_models_flow: {str(e)}")
-        return format_response(
-            success=False, msg=f"Failed to retrieve models: {str(e)}"
-        )
+        raise HTTPException(500, f"Failed to retrieve models: {str(e)}")
 
 
-def extract_flow(model_name: str, file: UploadFile):
+def extract_flow(model_name: str, file: UploadFile) -> BaseResponse:
 
     # making logs directory
     request_id = str(uuid.uuid4())
@@ -51,7 +49,7 @@ def extract_flow(model_name: str, file: UploadFile):
             },
         )
 
-        return format_response(
+        return BaseResponse(
             success=True, msg="Extraction successful", data=extracted_data
         )
 
@@ -69,4 +67,4 @@ def extract_flow(model_name: str, file: UploadFile):
             },
         )
 
-        return format_response(success=False, msg=f"Extraction failed: {str(e)}")
+        raise HTTPException(500, f"Extraction failed: {str(e)}")

@@ -11,13 +11,10 @@ API_BASE_URL = os.environ.get("API_BASE_URL")
 def fetch_models():
     try:
         response = requests.get(f"{API_BASE_URL}/models")
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("success") and data.get("data"):
-                return data["data"]
+        response.raise_for_status()
+        return response.json()["data"]
     except Exception:
-        pass
-    return None
+        return None
 
 
 def extract_receipt(selected_model, file_bytes, file_name, file_type):

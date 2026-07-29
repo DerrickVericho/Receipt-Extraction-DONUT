@@ -250,22 +250,16 @@ with col_right:
                 )
                 latency = time.time() - start
                 if resp.status_code == 200:
-                    body = resp.json()
-                    if body.get("success"):
-                        st.session_state.result = {
-                            "data": body.get("data", {}),
-                            "latency": latency,
-                            "model_name": model_name,
-                        }
-                        st.session_state.error = None
-                    else:
-                        st.session_state.error = body.get(
-                            "msg", "Extraction failed"
-                        )
-                        st.session_state.result = None
+                    st.session_state.result = {
+                        "data": resp.json().get("data", {}),
+                        "latency": latency,
+                        "model_name": model_name,
+                    }
+                    st.session_state.error = None
                 else:
-                    st.session_state.error = (
-                        f"Backend error: {resp.status_code}"
+                    # backend kirim pesan error di "detail" (HTTPException)
+                    st.session_state.error = resp.json().get(
+                        "detail", f"Backend error: {resp.status_code}"
                     )
                     st.session_state.result = None
             except Exception as e:
