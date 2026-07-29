@@ -14,5 +14,6 @@ pillow
 
 # --- frontend (fe/) ---
 streamlit
+streamlit-cropper
 requests
 python-dotenv

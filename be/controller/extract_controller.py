@@ -1,4 +1,8 @@
 import uuid
+<<<<<<< HEAD
+=======
+import os
+>>>>>>> dev0.2
 from fastapi import UploadFile
 from service.databricks_service import get_available_models, run_extraction
 from utils.helpers import format_response
