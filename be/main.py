@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from routes.extract_route import router as extract_router
-from utils.logger import get_logger
-from service.databricks_service import load_ml_components, clear_ml_components, _load_experiment_results
+from be.routes.extract_route import router as extract_router
+from be.utils.logger import get_logger
+from be.service.databricks_service import load_ml_components, clear_ml_components, _load_experiment_results
 
 logger = get_logger(__name__)
 

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, Form
-from controller.extract_controller import get_models_flow, extract_flow
-from schema.schemas import BaseResponse
+from be.controller.extract_controller import get_models_flow, extract_flow
+from be.schema.schemas import BaseResponse
 
 router = APIRouter()
 

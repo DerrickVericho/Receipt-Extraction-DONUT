@@ -9,8 +9,8 @@ from mlflow.tracking import MlflowClient
 from transformers import VisionEncoderDecoderModel, AutoProcessor
 from PIL import Image
 
-from utils.logger import get_logger
-from config.settings import settings
+from be.utils.logger import get_logger
+from be.config.settings import settings
 
 logger = get_logger(__name__)
 

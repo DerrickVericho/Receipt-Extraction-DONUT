@@ -1,8 +1,8 @@
 import uuid
 from fastapi import UploadFile, HTTPException
-from service.databricks_service import get_available_models, run_extraction
-from schema.schemas import BaseResponse
-from utils.logger import get_logger, new_request_dir, _save_uploaded_file, _save_log
+from be.service.databricks_service import get_available_models, run_extraction
+from be.schema.schemas import BaseResponse
+from be.utils.logger import get_logger, new_request_dir, _save_uploaded_file, _save_log
 
 logger = get_logger(__name__)
 
