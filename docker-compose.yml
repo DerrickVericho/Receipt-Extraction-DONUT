@@ -1,0 +1,29 @@
+services:
+  backend:
+    build: .
+    container_name: donut-backend
+    command: uvicorn be.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - DATABRICKS_DEVICE=cpu
+    volumes:
+      - model_cache:/app/model_cache
+    restart: unless-stopped
+
+  frontend:
+    build: .
+    container_name: donut-frontend
+    command: streamlit run fe/app.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    environment:
+      - API_BASE_URL=http://donut-backend:8000/api
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  model_cache:
