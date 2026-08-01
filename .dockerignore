@@ -1,0 +1,12 @@
+Dockerfile
+docker-compose.yml
+.git/
+.gitignore
+.env*
+__pycache__/
+*.pyc
+.venv/
+model_cache/
+logs/
+*.log
+.python-version
