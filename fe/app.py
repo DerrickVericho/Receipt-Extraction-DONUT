@@ -81,6 +81,72 @@ def get_image_bytes():
     return st.session_state.cropped_bytes or st.session_state.original_bytes
 
 
+def format_simple_receipt(data):
+    """Format receipt data into clean simple text lines."""
+    if not isinstance(data, dict):
+        return str(data)
+
+    lines = []
+
+    # menu
+    menu = data.get("menu") or data.get("items") or []
+    if isinstance(menu, dict):
+        menu = [menu]
+    elif not isinstance(menu, list):
+        menu = []
+
+    for item in menu:
+        if isinstance(item, dict):
+            cnt = str(item.get("cnt") or item.get("num") or "1").replace("x", "").replace("X", "").strip()
+            nm = str(item.get("nm") or item.get("name") or "Unknown item").strip()
+            unitprice = str(item.get("unitprice") or item.get("unit_price") or "").strip()
+            price = str(item.get("price") or item.get("total_price") or unitprice).strip()
+
+            if unitprice and price and unitprice != price:
+                lines.append(f"{cnt} {nm} {unitprice}, Total: {price}")
+            elif price:
+                lines.append(f"{cnt} {nm} {price}, Total: {price}")
+            else:
+                lines.append(f"{cnt} {nm}")
+        else:
+            lines.append(str(item))
+
+    # subtotal
+    subtotal = data.get("sub_total") or data.get("subtotal") or {}
+    if isinstance(subtotal, dict):
+        for k, v in subtotal.items():
+            k_label = k.replace("_", " ").title()
+            lines.append(f"{k_label}: {v}")
+
+    # total
+    total = data.get("total") or data.get("totals") or {}
+    if isinstance(total, dict):
+        field_names = {
+            "total_price": "Total amount",
+            "cashprice": "Cash",
+            "changeprice": "Change",
+            "menuqty_cnt": "Total qty",
+            "creditcardprice": "Card",
+            "emoneyprice": "E-Money",
+            "tax_price": "Tax",
+            "discount_price": "Discount",
+            "service_price": "Service",
+        }
+        for k, v in total.items():
+            label = field_names.get(k.lower(), k.replace("_", " ").title())
+            lines.append(f"{label}: {v}")
+
+    # other fields
+    for k, v in data.items():
+        if k.lower() not in ["menu", "items", "total", "totals", "sub_total", "subtotal"]:
+            if isinstance(v, (dict, list)):
+                lines.append(f"{k.replace('_', ' ').title()}: {json.dumps(v, ensure_ascii=False)}")
+            else:
+                lines.append(f"{k.replace('_', ' ').title()}: {v}")
+
+    return "\n".join(lines) if lines else str(data)
+
+
 # ── Title ──
 
 st.markdown("## Donut KIE \u2014 Receipt Extraction")
@@ -280,16 +346,17 @@ with col_right:
             unsafe_allow_html=True,
         )
 
+        simple_text = format_simple_receipt(prediction)
         raw = json.dumps(prediction, indent=2, ensure_ascii=False)
-        raw_escaped = raw.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        st.markdown(
-            f'<div style="max-height:500px;overflow-y:auto;border:1px solid rgba(255,255,255,0.1);'
-            f'border-radius:8px;padding:0.75rem;background:rgba(255,255,255,0.02);">'
-            f'<pre style="margin:0;white-space:pre-wrap;font-size:0.78rem;font-family:monospace;">'
-            f'<code>{raw_escaped}</code></pre></div>',
-            unsafe_allow_html=True,
-        )
 
+        # Simple human-readable output
+        st.code(simple_text, language=None)
+
+        # Raw JSON expander
+        with st.expander("View Raw JSON", expanded=False):
+            st.code(raw, language="json")
+
+        # Download button
         st.download_button(
             "Download JSON",
             raw,
