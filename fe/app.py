@@ -8,13 +8,14 @@ from PIL import Image
 from streamlit_cropper import st_cropper
 
 from service import fetch_models, extract_receipt
+from tutorial import show_tutorial_dialog
 
 st.set_page_config(layout="wide", page_title="Donut KIE \u2014 Receipt Extraction")
 
 st.markdown(
     """
 <style>
-    .block-container { max-width: 1400px; padding-top: 1rem; }
+    .block-container { max-width: 1400px; padding-top: 2rem; }
     .img-frame {
         width: 100%;
         height: 340px;
@@ -44,12 +45,41 @@ st.markdown(
         opacity: 0.75;
         margin-bottom: 0.5rem;
     }
+    /* Tutorial Modal & Carousel Styles */
+    .tutorial-container {
+        padding: 0.5rem 0;
+    }
+    .tutorial-img-container {
+        width: 100%;
+        height: 270px;
+        background: radial-gradient(circle at center, rgba(99, 102, 241, 0.15) 0%, rgba(15, 23, 42, 0.75) 100%);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        margin-bottom: 1rem;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
+    .tutorial-img-container svg {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+    .step-indicator {
+        text-align: center;
+        font-size: 0.85rem;
+        font-weight: 500;
+        opacity: 0.7;
+        margin: 0.4rem 0;
+    }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-# ── Session state ──
+# session state
 
 if "upload_key" not in st.session_state:
     st.session_state.upload_key = 0
@@ -64,7 +94,10 @@ DEFAULTS = {
     "selected_model": None,
     "result": None,
     "error": None,
+    "tutorial_step": 0,
+    "show_tutorial": False,
 }
+
 for k, v in DEFAULTS.items():
     if k not in st.session_state:
         st.session_state[k] = v
@@ -147,15 +180,24 @@ def format_simple_receipt(data):
     return "\n".join(lines) if lines else str(data)
 
 
-# ── Title ──
+# header (title and tutorial button)
 
-st.markdown("## Donut KIE \u2014 Receipt Extraction")
+col_header_left, col_header_right = st.columns([0.8, 0.2], vertical_alignment="center")
+with col_header_left:
+    st.markdown("## Donut KIE — Receipt Extraction")
+with col_header_right:
+    if st.button("📖 How to Use", use_container_width=True, help="Open app tutorial"):
+        st.session_state.tutorial_step = 0
+        st.session_state.show_tutorial = True
+        st.rerun()
+
+# render tutorial dialog when active
+if st.session_state.get("show_tutorial", False):
+    show_tutorial_dialog()
 
 col_left, col_right = st.columns([0.35, 0.65])
 
-# ══════════════════════════════════════════════════════════════
-# LEFT COLUMN
-# ══════════════════════════════════════════════════════════════
+# left column
 
 with col_left:
 
@@ -206,7 +248,7 @@ with col_left:
                     st.session_state.rotate_angle = 0
                     st.rerun()
 
-    # ── Normal mode ──
+    # normal mode
     else:
         if st.session_state.original_bytes is None:
             with st.container():
@@ -263,7 +305,7 @@ with col_left:
 
     st.divider()
 
-    # ── Model selector ──
+    # model selector
     models = fetch_models()
     if not models:
         st.error("No models available from backend.")
@@ -294,9 +336,7 @@ with col_left:
         disabled=not has_image,
     )
 
-# ══════════════════════════════════════════════════════════════
-# RIGHT COLUMN
-# ══════════════════════════════════════════════════════════════
+# right column
 
 with col_right:
     st.markdown("### Extraction output")
