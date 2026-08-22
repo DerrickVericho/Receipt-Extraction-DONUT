@@ -9,6 +9,7 @@ pydantic-settings     # config/settings.py
 mlflow-skinny         # MlflowClient.download_artifacts; pulls databricks-sdk
 torch
 torchvision           # transformers v5 fast image processors
+torchao
 transformers
 pillow
 

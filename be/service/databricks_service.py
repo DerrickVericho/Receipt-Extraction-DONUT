@@ -6,8 +6,9 @@ import re
 import mlflow
 import torch
 from mlflow.tracking import MlflowClient
-from transformers import VisionEncoderDecoderModel, AutoProcessor
+from transformers import VisionEncoderDecoderModel, AutoProcessor, VisionEncoderDecoderConfig
 from PIL import Image
+from torchao.quantization import Int8DynamicActivationInt8WeightConfig, quantize_
 
 from be.utils.logger import get_logger
 from be.config.settings import settings
@@ -25,6 +26,14 @@ if settings.DATABRICKS_DEVICE and settings.DATABRICKS_DEVICE != "auto":
 else:
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info(f"Using compute device: {DEVICE} (auto-detected)")
+
+# normalize CUDA device to an explicit index so model.to() and
+# torch.load(map_location=...) produce matching devices for assign=True
+if DEVICE.type == "cuda":
+    DEVICE = torch.device(
+        "cuda", DEVICE.index if DEVICE.index is not None else torch.cuda.current_device()
+    )
+    logger.info(f"Normalized CUDA device to: {DEVICE}")
 
 # global variable agar tidak di load berulang ulang
 ml_components = {}
@@ -87,12 +96,30 @@ def load_ml_components():
 
         # load model based on quantization type
         if is_quantized:
-            logger.info(f"Loading run_id {run_id} as quantized model on CPU...")
+            logger.info(f"Loading run_id {run_id} as quantized model on {DEVICE}...")
             pt_files = [f for f in os.listdir(expected_local_artifact_path) if f.endswith(".pt")]
             if not pt_files:
                 raise FileNotFoundError(f"No .pt file found for quantized model {run_id}")
-            model_path = os.path.join(expected_local_artifact_path, pt_files[0])
-            model = torch.load(model_path, map_location=torch.device("cpu"), weights_only=False)
+            state_dict_path = os.path.join(expected_local_artifact_path, pt_files[0])
+
+            # 1) Rebuild pruned architecture from config.json
+            config = VisionEncoderDecoderConfig.from_pretrained(expected_local_artifact_path)
+            model = VisionEncoderDecoderModel(config)
+
+            # 2) Apply torchao INT8 dynamic quantization to decoder (matches notebook)
+            model.to(DEVICE)
+            model.eval()
+            quantize_(model.decoder, Int8DynamicActivationInt8WeightConfig())
+
+            # 3) Load INT8 state_dict (trusted source → weights_only=False, assign=True)
+            state_dict = torch.load(
+                state_dict_path,
+                map_location=DEVICE,
+                weights_only=False,
+            )
+            model.load_state_dict(state_dict, assign=True)
+
+            # 4) Set DONUT config tokens + eval
             model.config.pad_token_id = processor.tokenizer.pad_token_id
             model.config.eos_token_id = processor.tokenizer.eos_token_id
             model.config.decoder_start_token_id = processor.tokenizer.convert_tokens_to_ids("<s_cord-v2>")
@@ -265,8 +292,8 @@ def run_extraction(model_name: str, file_bytes: bytes):
     processor = components["processor"]
     model = components["model"]
 
-    # quantized models must stay on CPU
-    device = torch.device("cpu") if components.get("is_quantized") else DEVICE
+    # device follows the global DEVICE setting (quantized or not)
+    device = DEVICE
 
     # prepare image for the model and move to correct device
     image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
