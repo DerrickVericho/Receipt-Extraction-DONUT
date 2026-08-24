@@ -1,16 +1,17 @@
 import base64
 import io
 import json
+import threading
 import time
 
 import streamlit as st
 from PIL import Image
 from streamlit_cropper import st_cropper
 
-from service import fetch_models, extract_receipt
+from service import fetch_models, extract_receipt, preload_model
 from tutorial import show_tutorial_dialog
 
-st.set_page_config(layout="wide", page_title="Donut KIE \u2014 Receipt Extraction")
+st.set_page_config(layout = "wide", page_title = "DONUT Receipt Extraction")
 
 st.markdown(
     """
@@ -46,12 +47,9 @@ st.markdown(
         margin-bottom: 0.5rem;
     }
     /* Tutorial Modal & Carousel Styles */
-    .tutorial-container {
-        padding: 0.5rem 0;
-    }
     .tutorial-img-container {
         width: 100%;
-        height: 270px;
+        height: 480px;
         background: radial-gradient(circle at center, rgba(99, 102, 241, 0.15) 0%, rgba(15, 23, 42, 0.75) 100%);
         border: 1px solid rgba(255, 255, 255, 0.12);
         border-radius: 12px;
@@ -61,11 +59,6 @@ st.markdown(
         overflow: hidden;
         margin-bottom: 1rem;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-    }
-    .tutorial-img-container svg {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
     }
     .step-indicator {
         text-align: center;
@@ -80,6 +73,8 @@ st.markdown(
 )
 
 # session state
+CROP_DISPLAY_MAX_W = 360
+CROP_DISPLAY_MAX_H = 480
 
 if "upload_key" not in st.session_state:
     st.session_state.upload_key = 0
@@ -92,15 +87,18 @@ DEFAULTS = {
     "cropping": False,
     "rotate_angle": 0,
     "selected_model": None,
+    "crop_rect": None,
     "result": None,
     "error": None,
     "tutorial_step": 0,
-    "show_tutorial": False,
 }
 
 for k, v in DEFAULTS.items():
     if k not in st.session_state:
         st.session_state[k] = v
+
+if "prefetched_models" not in st.session_state:
+    st.session_state.prefetched_models = []
 
 
 def reset_all():
@@ -114,8 +112,25 @@ def get_image_bytes():
     return st.session_state.cropped_bytes or st.session_state.original_bytes
 
 
+def _fit_display(img, max_w, max_h):
+    ratio = min(max_w / img.width, max_h / img.height, 1.0)
+    return img.resize((max(1, int(img.width * ratio)), max(1, int(img.height * ratio))))
+
+
+def _rotate(delta):
+    st.session_state.rotate_angle = (st.session_state.rotate_angle + delta) % 360
+    st.rerun()
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def _fetch_models_cached():
+    models = fetch_models()
+    if models is None:
+        raise ConnectionError("Model catalog unavailable")
+    return models
+
+
 def format_simple_receipt(data):
-    """Format receipt data into clean simple text lines."""
     if not isinstance(data, dict):
         return str(data)
 
@@ -184,16 +199,11 @@ def format_simple_receipt(data):
 
 col_header_left, col_header_right = st.columns([0.8, 0.2], vertical_alignment="center")
 with col_header_left:
-    st.markdown("## Donut KIE — Receipt Extraction")
+    st.markdown("## DONUT Receipt Extraction")
 with col_header_right:
-    if st.button("📖 How to Use", use_container_width=True, help="Open app tutorial"):
+    if st.button("Guide", use_container_width=True):
         st.session_state.tutorial_step = 0
-        st.session_state.show_tutorial = True
-        st.rerun()
-
-# render tutorial dialog when active
-if st.session_state.get("show_tutorial", False):
-    show_tutorial_dialog()
+        show_tutorial_dialog()
 
 col_left, col_right = st.columns([0.35, 0.65])
 
@@ -201,48 +211,59 @@ col_left, col_right = st.columns([0.35, 0.65])
 
 with col_left:
 
-    # ── Crop mode ──
+    # crop mode
     if st.session_state.cropping:
         raw_bytes = get_image_bytes()
         if raw_bytes is not None:
-            img = Image.open(io.BytesIO(raw_bytes))
+            src = Image.open(io.BytesIO(raw_bytes))
             angle = st.session_state.rotate_angle
             if angle != 0:
-                img = img.rotate(angle, expand=True)
+                src = src.rotate(angle, expand=True)
 
-            cropped = st_cropper(
-                img, realtime_update=True, box_color="#FF4B4B", aspect_ratio=None
+            disp = _fit_display(src.copy(), CROP_DISPLAY_MAX_W, CROP_DISPLAY_MAX_H)
+            box = st_cropper(
+                disp,
+                realtime_update=True,
+                box_color="#FF4B4B",
+                aspect_ratio=None,
+                return_type="box",
+                should_resize_image=False,
             )
+            st.session_state.crop_rect = box
 
             c_apply, c_cancel = st.columns(2)
             with c_apply:
-                if st.button("Apply crop", use_container_width=True):
+                if st.button("Done", use_container_width=True):
+                    rect = st.session_state.crop_rect or {}
+                    sx = src.width / max(1, disp.width)
+                    sy = src.height / max(1, disp.height)
+                    left = max(0, int(rect.get("left", 0) * sx))
+                    top = max(0, int(rect.get("top", 0) * sy))
+                    right = min(src.width, int((rect.get("left", 0) + rect.get("width", disp.width)) * sx))
+                    bottom = min(src.height, int((rect.get("top", 0) + rect.get("height", disp.height)) * sy))
+                    cropped = src.crop((left, top, right, bottom))
                     buf = io.BytesIO()
-                    cropped.save(buf, format="PNG")
+                    cropped.convert("RGB").save(buf, format="JPEG", quality=90)
                     st.session_state.cropped_bytes = buf.getvalue()
                     st.session_state.cropping = False
                     st.session_state.rotate_angle = 0
+                    st.session_state.crop_rect = None
                     st.rerun()
             with c_cancel:
                 if st.button("Cancel", use_container_width=True):
                     st.session_state.cropping = False
                     st.session_state.rotate_angle = 0
+                    st.session_state.crop_rect = None
                     st.rerun()
 
             st.markdown("&nbsp;")
             c_rl, c_rr, c_rs = st.columns(3)
             with c_rl:
                 if st.button("Rotate \u21ba", use_container_width=True):
-                    st.session_state.rotate_angle = (
-                        st.session_state.rotate_angle + 90
-                    ) % 360
-                    st.rerun()
+                    _rotate(90)
             with c_rr:
                 if st.button("\u21bb Rotate", use_container_width=True):
-                    st.session_state.rotate_angle = (
-                        st.session_state.rotate_angle - 90
-                    ) % 360
-                    st.rerun()
+                    _rotate(-90)
             with c_rs:
                 if st.button("Reset", use_container_width=True):
                     st.session_state.rotate_angle = 0
@@ -253,7 +274,7 @@ with col_left:
         if st.session_state.original_bytes is None:
             with st.container():
                 st.markdown(
-                    '<div class="upload-zone"><b>Upload receipt image</b><br>'
+                    '<div class="upload-zone"><b>Drop a receipt here, or click to upload</b><br>'
                     '<span style="font-size:0.8rem;opacity:0.6;">'
                     "JPG, JPEG, PNG, WEBP  &middot;  Max 10 MB</span></div>",
                     unsafe_allow_html=True,
@@ -266,7 +287,7 @@ with col_left:
                 )
                 if uploaded is not None:
                     if uploaded.size > 10 * 1024 * 1024:
-                        st.error("File too large. Maximum 10 MB.")
+                        st.error("That file's too large. Max size is 10 MB.")
                     else:
                         st.session_state.original_bytes = uploaded.getvalue()
                         st.session_state.original_name = uploaded.name
@@ -282,13 +303,16 @@ with col_left:
                     f"{st.session_state.original_name}</div>",
                     unsafe_allow_html=True,
                 )
-                img = Image.open(io.BytesIO(get_image_bytes()))
-                buf = io.BytesIO()
-                img.save(buf, format="PNG")
-                img_b64 = base64.b64encode(buf.getvalue()).decode()
+                is_cropped = st.session_state.cropped_bytes is not None
+                preview_bytes = (
+                    st.session_state.cropped_bytes if is_cropped
+                    else st.session_state.original_bytes
+                )
+                mime = "image/jpeg" if is_cropped else (st.session_state.original_type or "image/png")
+                img_b64 = base64.b64encode(preview_bytes).decode()
                 st.markdown(
                     f'<div class="img-frame">'
-                    f'<img src="data:image/png;base64,{img_b64}" />'
+                    f'<img src="data:{mime};base64,{img_b64}" />'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
@@ -306,18 +330,17 @@ with col_left:
     st.divider()
 
     # model selector
-    models = fetch_models()
+    try:
+        models = _fetch_models_cached()
+    except ConnectionError:
+        models = None
     if not models:
-        st.error("No models available from backend.")
+        st.error("No models are available right now.")
         st.stop()
 
     model_map = {m["id"]: m for m in models}
     model_opts = list(model_map.keys())
-    default_idx = 0
-    for i, m in enumerate(models):
-        if m.get("recommended"):
-            default_idx = i
-            break
+    default_idx = next((i for i, m in enumerate(models) if m.get("recommended")), 0)
 
     selected_id = st.selectbox(
         "Select model",
@@ -327,10 +350,19 @@ with col_left:
     )
     st.session_state.selected_model = selected_id
 
-    # ── Execute button ──
+    if selected_id not in st.session_state.prefetched_models:
+        st.session_state.prefetched_models.append(selected_id)
+        if not model_map[selected_id].get("loaded"):
+            threading.Thread(
+                target=preload_model,
+                args=(selected_id,),
+                daemon=True,
+            ).start()
+            st.toast(f"Getting {model_map[selected_id]['name']} ready…")
+
     has_image = st.session_state.original_bytes is not None
     run = st.button(
-        "Execute extraction",
+        "Extract",
         type="primary",
         use_container_width=True,
         disabled=not has_image,
@@ -339,7 +371,7 @@ with col_left:
 # right column
 
 with col_right:
-    st.markdown("### Extraction output")
+    st.markdown("### Results")
 
     # trigger extraction when Execute is clicked
     if run and has_image:
@@ -368,8 +400,8 @@ with col_right:
                         "detail", f"Backend error: {resp.status_code}"
                     )
                     st.session_state.result = None
-            except Exception as e:
-                st.session_state.error = f"Connection error: {e}"
+            except Exception:
+                st.session_state.error = "Couldn't reach the server. Please try again."
                 st.session_state.result = None
             st.rerun()
 
@@ -378,11 +410,18 @@ with col_right:
 
     if result:
         prediction = result.get("data", {}).get("prediction", {})
+        timing = result.get("data", {}).get("timing") or {}
         meta_name = result.get("model_name", "")
-        meta_lat = result.get("latency", 0)
+        meta_lat = timing.get("inference_s") or result.get("latency") or 0
+        load_s = timing.get("load_s") or 0
+        load_note = (
+            f' <span style="opacity:0.55;">&middot; (first-load +{load_s:.2f}s)</span>'
+            if load_s
+            else ""
+        )
 
         st.markdown(
-            f'<div class="meta-row">{meta_name} &middot; {meta_lat:.2f}s &middot; Success</div>',
+            f'<div class="meta-row">Done in {meta_lat:.2f}s {load_note}</div>',
             unsafe_allow_html=True,
         )
 
@@ -392,11 +431,9 @@ with col_right:
         # Simple human-readable output
         st.code(simple_text, language=None)
 
-        # Raw JSON expander
         with st.expander("View Raw JSON", expanded=False):
             st.code(raw, language="json")
 
-        # Download button
         st.download_button(
             "Download JSON",
             raw,
@@ -414,6 +451,5 @@ with col_right:
 
     else:
         st.info(
-            "Extraction result will appear here.\n\n"
-            "Upload a receipt, select a model, and click Execute."
+            "Upload a receipt to get started."
         )

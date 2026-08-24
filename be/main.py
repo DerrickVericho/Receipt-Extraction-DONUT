@@ -2,7 +2,8 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from be.routes.extract_route import router as extract_router
 from be.utils.logger import get_logger
-from be.service.databricks_service import load_ml_components, clear_ml_components, _load_experiment_results
+from be.service.donut_service import load_ml_components, clear_ml_components, warmup_models
+from be.service.model_catalog import load_experiment_results, get_available_models
 
 logger = get_logger(__name__)
 
@@ -11,7 +12,11 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("FastAPI application startup: initializing models")
     load_ml_components()
-    _load_experiment_results()
+    load_experiment_results()
+    catalog = get_available_models()
+    warmup_models(
+        [m["id"] for m in sorted(catalog, key=lambda m: not m["recommended"])]
+    )
     yield
     logger.info("FastAPI application shutdown: clearing models")
     clear_ml_components()
