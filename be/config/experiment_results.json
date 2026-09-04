@@ -19,6 +19,25 @@
     "PTQ Latency Reduction (%)":null
   },
   {
+    "Model":"DONUT-Base-Q",
+    "Precision":0.8000143351,
+    "Recall":0.793317787,
+    "F1-Score":0.7955342993,
+    "N-TED":0.1126738773,
+    "Size (MB)":633.7300443649,
+    "Latency (ms\/sample)":871.2400913239,
+    "FLOPs (GFLOPs)":394.437558272,
+    "MLflow Run ID":"49b99f40e03d4711b612793d98e891ce",
+    "MLflow Artifact URI":"dbfs:\/databricks\/mlflow-tracking\/3870276204235415\/49b99f40e03d4711b612793d98e891ce\/artifacts",
+    "Size Reduction (%)":17.5840488574,
+    "Latency Reduction (%)":-4.6245061169,
+    "F1 Drop":0.0016524882,
+    "N-TED Increase":0.0033563039,
+    "FLOPs Reduction (%)":0.0,
+    "PTQ Size Reduction (%)":17.5840488574,
+    "PTQ Latency Reduction (%)":-4.6245061169
+  },
+  {
     "Model":"DONUT-P30",
     "Precision":0.7655134503,
     "Recall":0.7545248935,
