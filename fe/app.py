@@ -136,74 +136,76 @@ def format_simple_receipt(data):
 
     lines = []
 
-    # menu
-    menu = data.get("menu") or data.get("items") or []
+    # menu items (nm, unitprice, cnt, price)
+    menu = data.get("menu") or []
     if isinstance(menu, dict):
         menu = [menu]
     elif not isinstance(menu, list):
         menu = []
 
+    rows = []
     for item in menu:
         if isinstance(item, dict):
-            cnt = str(item.get("cnt") or item.get("num") or "1").replace("x", "").replace("X", "").strip()
-            nm = str(item.get("nm") or item.get("name") or "Unknown item").strip()
-            unitprice = str(item.get("unitprice") or item.get("unit_price") or "").strip()
-            price = str(item.get("price") or item.get("total_price") or unitprice).strip()
-
-            if unitprice and price and unitprice != price:
-                lines.append(f"{cnt} {nm} {unitprice}, Total: {price}")
-            elif price:
-                lines.append(f"{cnt} {nm} {price}, Total: {price}")
-            else:
-                lines.append(f"{cnt} {nm}")
+            rows.append([
+                str(item.get("nm") or "-").strip(),
+                str(item.get("unitprice") or "-").strip(),
+                str(item.get("cnt") or "1").strip(),
+                str(item.get("price") or "-").strip(),
+            ])
         else:
-            lines.append(str(item))
+            rows.append([str(item).strip(), "-", "1", "-"])
 
-    # subtotal
-    subtotal = data.get("sub_total") or data.get("subtotal") or {}
-    if isinstance(subtotal, dict):
-        for k, v in subtotal.items():
-            k_label = k.replace("_", " ").title()
-            lines.append(f"{k_label}: {v}")
+    headers = ["Name", "Price per item", "Qty", "Total"]
+    if rows:
+        col_w = [
+            max(len(headers[i]), max(len(r[i]) for r in rows))
+            for i in range(4)
+        ]
+        lines.append(
+            f"{headers[0].ljust(col_w[0])} | {headers[1].ljust(col_w[1])} | {headers[2].ljust(col_w[2])} | {headers[3].ljust(col_w[3])}".rstrip()
+        )
+        for r in rows:
+            lines.append(
+                f"{r[0].ljust(col_w[0])} | {r[1].ljust(col_w[1])} | {r[2].ljust(col_w[2])} | {r[3].ljust(col_w[3])}".rstrip()
+            )
+    else:
+        lines.append("Name | Price per item | Qty | Total")
 
-    # total
-    total = data.get("total") or data.get("totals") or {}
-    if isinstance(total, dict):
-        field_names = {
-            "total_price": "Total amount",
-            "cashprice": "Cash",
-            "changeprice": "Change",
-            "menuqty_cnt": "Total qty",
-            "creditcardprice": "Card",
-            "emoneyprice": "E-Money",
-            "tax_price": "Tax",
-            "discount_price": "Discount",
-            "service_price": "Service",
-        }
-        for k, v in total.items():
-            label = field_names.get(k.lower(), k.replace("_", " ").title())
-            lines.append(f"{label}: {v}")
+    # empty line separating items from summary
+    lines.append("")
 
-    # other fields
-    for k, v in data.items():
-        if k.lower() not in ["menu", "items", "total", "totals", "sub_total", "subtotal"]:
-            if isinstance(v, (dict, list)):
-                lines.append(f"{k.replace('_', ' ').title()}: {json.dumps(v, ensure_ascii=False)}")
-            else:
-                lines.append(f"{k.replace('_', ' ').title()}: {v}")
+    # summary fields (subtotal_price, service_price, tax_price, total_price)
+    sub_obj = data.get("sub_total") if isinstance(data.get("sub_total"), dict) else {}
+    tot_obj = data.get("total") if isinstance(data.get("total"), dict) else {}
 
-    return "\n".join(lines) if lines else str(data)
+    subtotal = sub_obj.get("subtotal_price") or tot_obj.get("subtotal_price")
+    service = tot_obj.get("service_price") or sub_obj.get("service_price")
+    tax = tot_obj.get("tax_price") or sub_obj.get("tax_price")
+    total = tot_obj.get("total_price")
+
+    lines.append(f"Subtotal: {subtotal if subtotal is not None else '-'}")
+    lines.append(f"Service: {service if service is not None else '-'}")
+    lines.append(f"Tax: {tax if tax is not None else '-'}")
+    lines.append(f"Total: {total if total is not None else '-'}")
+
+    return "\n".join(lines)
 
 
 # header (title and tutorial button)
+
+if "tutorial_auto_opened" not in st.session_state:
+    st.session_state.tutorial_auto_opened = False
 
 col_header_left, col_header_right = st.columns([0.8, 0.2], vertical_alignment="center")
 with col_header_left:
     st.markdown("## DONUT Receipt Extraction")
 with col_header_right:
-    if st.button("Guide", use_container_width=True):
-        st.session_state.tutorial_step = 0
-        show_tutorial_dialog()
+    guide_btn = st.button("Guide", use_container_width=True)
+
+if not st.session_state.tutorial_auto_opened or guide_btn:
+    st.session_state.tutorial_auto_opened = True
+    st.session_state.tutorial_step = 0
+    show_tutorial_dialog()
 
 col_left, col_right = st.columns([0.35, 0.65])
 
