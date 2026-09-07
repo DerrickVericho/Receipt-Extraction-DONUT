@@ -21,3 +21,10 @@ def extract_receipt(selected_model, file_bytes, file_name, file_type):
     data = {"model_name": selected_model}
     files = {"file": (file_name, file_bytes, file_type)}
     return requests.post(f"{API_BASE_URL}/extract", files=files, data=data)
+
+
+def preload_model(selected_model):
+    try:
+        requests.post(f"{API_BASE_URL}/models/{selected_model}/preload", timeout=600)
+    except Exception:
+        pass
